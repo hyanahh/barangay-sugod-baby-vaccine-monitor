@@ -49,3 +49,11 @@ Keep `.env` private and never upload it to GitHub. The Express app trusts one re
 ## Safety and data
 
 Do not delete MongoDB collections to troubleshoot sign-in. Baby and vaccination records are stored separately from user authentication. Back up the database before maintenance. Use unique passwords and rotate any credentials accidentally committed or shared.
+
+## Session cookie configuration (localhost and Render)
+
+The session cookie uses `secure: "auto"` and the app trusts one reverse proxy.
+This allows the session cookie over HTTP on localhost while requiring a secure
+cookie when the app is accessed over HTTPS on Render. If login succeeds but the
+browser returns to the portal selector, restart the server and clear cookies for
+`localhost:3000`, then sign in again.

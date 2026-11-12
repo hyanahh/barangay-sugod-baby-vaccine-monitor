@@ -73,7 +73,13 @@ app.use(express.static(__dirname + "/public"));
 app.use(session({
   secret: process.env.SESSION_SECRET, resave: false, saveUninitialized: false,
   store: MongoStore.create({ mongoUrl: process.env.MONGODB_URI, collectionName: "sessions" }),
-  cookie: { httpOnly: true, sameSite: "strict", secure: process.env.NODE_ENV === "production", maxAge: 8 * 60 * 60 * 1000 }
+  cookie: {
+    httpOnly: true,
+    sameSite: "lax",
+    // "auto" sends Secure cookies on HTTPS (Render) but allows HTTP localhost.
+    secure: "auto",
+    maxAge: 8 * 60 * 60 * 1000
+  }
 }));
 app.use(async (req, res, next) => {
   if (req.session.user) {
