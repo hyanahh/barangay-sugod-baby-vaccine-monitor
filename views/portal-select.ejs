@@ -1,0 +1,22 @@
+<%- include("partials/header") %>
+<section class="portal-welcome">
+  <p class="tag">BARANGAY SUGOD BABY VACCINE MONITORING SYSTEM</p>
+  <h1>Select your portal</h1>
+  <p class="muted">Choose the sign-in page that matches your account type.</p>
+</section>
+<section class="portal-grid">
+  <a class="card portal-card" href="/admin/login">
+    <span class="portal-icon">🛡️</span><span class="tag">AUTHORIZED STAFF</span>
+    <h2>Administrator</h2><p class="muted">Manage staff accounts, baby records, and system monitoring.</p><span class="portal-link">Admin sign in →</span>
+  </a>
+  <a class="card portal-card" href="/healthcare/login">
+    <span class="portal-icon">＋</span><span class="tag">BARANGAY HEALTH CENTER</span>
+    <h2>Healthcare Worker</h2><p class="muted">Manage baby information and monthly vaccination records.</p><span class="portal-link">Healthcare sign in →</span>
+  </a>
+  <a class="card portal-card" href="/parent/login">
+    <span class="portal-icon">♡</span><span class="tag">PARENT / GUARDIAN</span>
+    <h2>Parent</h2><p class="muted">View linked baby profiles and monthly vaccine records.</p><span class="portal-link">Parent sign in →</span>
+    <small>New parent? <u>Create an account</u></small>
+  </a>
+</section>
+<%- include("partials/footer") %>

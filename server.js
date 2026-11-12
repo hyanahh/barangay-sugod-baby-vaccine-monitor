@@ -9,44 +9,11 @@ const rateLimit = require("express-rate-limit");
 const webpush = require("web-push");
 
 const app = express();
+// Render terminates HTTPS at its reverse proxy; trust the first proxy for client IP/rate-limit handling.
 app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3000;
 const required = ["MONGODB_URI", "SESSION_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD"];
 for (const k of required) if (!process.env[k]) { console.error(`Missing ${k} in environment`); process.exit(1); }
-
-// Connect to MongoDB and ensure the configured administrator exists.
-// To reset an EXISTING administrator password, temporarily set
-// ADMIN_RESET_PASSWORD=true in Render, deploy once, then remove that variable.
-// This never changes a Parent/Guardian or Healthcare Worker account into an admin.
-mongoose.connect(process.env.MONGODB_URI)
-  .then(async () => {
-    console.log("Connected to MongoDB");
-    const email = String(process.env.ADMIN_EMAIL || "").toLowerCase().trim();
-    const configuredPassword = String(process.env.ADMIN_PASSWORD || "");
-    let admin = await User.findOne({ email });
-
-    if (!admin) {
-      admin = await User.create({
-        name: process.env.ADMIN_NAME || "System Administrator",
-        email,
-        passwordHash: await bcrypt.hash(configuredPassword, 12),
-        role: "Administrator",
-        active: true
-      });
-      console.log("Initial administrator account created.");
-    } else if (admin.role !== "Administrator") {
-      console.error("ADMIN_EMAIL belongs to a non-administrator account. No account role or password was changed. Use a different ADMIN_EMAIL for the administrator.");
-    } else if (process.env.ADMIN_RESET_PASSWORD === "true") {
-      admin.passwordHash = await bcrypt.hash(configuredPassword, 12);
-      admin.active = true;
-      if (process.env.ADMIN_NAME) admin.name = process.env.ADMIN_NAME;
-      await admin.save();
-      console.log("Administrator password reset and account activated.");
-    } else {
-      console.log(`Administrator account found: ${email}. Existing password and account status were left unchanged.`);
-    }
-  })
-  .catch(e => { console.error("MongoDB connection or administrator setup error:", e.message); process.exit(1); });
 
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 100 },
@@ -219,16 +186,50 @@ function monthVaccineFilter(start, end) {
   ] };
 }
 
-app.get("/login", (req, res) => res.render("login", { title: "Sign in", error: null }));
-app.post("/login", loginLimiter, async (req, res) => {
-  const email = String(req.body.email || "").toLowerCase().trim();
-  const user = await User.findOne({ email });
-  if (!user || !user.active || !(await bcrypt.compare(req.body.password || "", user.passwordHash)))
-    return res.status(401).render("login", { title: "Sign in", error: "Invalid login or account inactive." });
-  req.session.regenerate(err => {
-    if (err) return res.status(500).send("Could not start session.");
-    req.session.user = { id: user._id.toString() }; res.redirect("/dashboard");
+const PORTAL_ROLES = {
+  admin: { role: "Administrator", title: "Administrator sign in", label: "ADMINISTRATOR PORTAL", dashboard: "/dashboard" },
+  healthcare: { role: "Healthcare Worker", title: "Healthcare Worker sign in", label: "HEALTHCARE WORKER PORTAL", dashboard: "/dashboard" },
+  parent: { role: "Parent/Guardian", title: "Parent sign in", label: "PARENT / GUARDIAN PORTAL", dashboard: "/my-babies" }
+};
+function dashboardForRole(role) {
+  if (role === "Parent/Guardian") return "/parent/dashboard";
+  if (role === "Healthcare Worker") return "/healthcare/dashboard";
+  return "/admin/dashboard";
+}
+function loginPage(portal, error = null, status = 200) {
+  return (req, res) => res.status(status).render("login", {
+    title: portal.title, error, portalKey: Object.keys(PORTAL_ROLES).find(k => PORTAL_ROLES[k] === portal),
+    portal, portalLinks: PORTAL_ROLES
   });
+}
+app.get("/", (req, res) => res.redirect("/login"));
+app.get("/login", (req, res) => res.render("portal-select", { title: "Choose your portal", portalLinks: PORTAL_ROLES }));
+app.get("/admin/login", loginPage(PORTAL_ROLES.admin));
+app.get("/healthcare/login", loginPage(PORTAL_ROLES.healthcare));
+app.get("/parent/login", loginPage(PORTAL_ROLES.parent));
+app.post("/login", loginLimiter, async (req, res, next) => {
+  try {
+    const portalKey = String(req.body.portal || "");
+    const portal = PORTAL_ROLES[portalKey];
+    if (!portal) return res.status(400).send("Invalid portal selection.");
+    const email = String(req.body.email || "").toLowerCase().trim();
+    const password = String(req.body.password || "");
+    const user = await User.findOne({ email });
+    const matches = Boolean(user && user.active && user.role === portal.role &&
+      user.passwordHash && await bcrypt.compare(password, user.passwordHash));
+    if (!matches) return res.status(401).render("login", {
+      title: portal.title, error: "Invalid email/password, inactive account, or account type does not match this portal.",
+      portalKey, portal, portalLinks: PORTAL_ROLES
+    });
+    req.session.regenerate(err => {
+      if (err) return next(err);
+      req.session.user = { id: user._id.toString() };
+      req.session.save(saveErr => {
+        if (saveErr) return next(saveErr);
+        res.redirect(dashboardForRole(user.role));
+      });
+    });
+  } catch (error) { next(error); }
 });
 app.get("/register", (req, res) => res.render("register", { title: "Parent registration", error: null }));
 app.post("/register", registerLimiter, async (req, res) => {
@@ -244,8 +245,7 @@ app.post("/register", registerLimiter, async (req, res) => {
 });
 app.post("/logout", auth, (req, res) => req.session.destroy(() => res.redirect("/login")));
 
-app.get("/dashboard", auth, async (req, res) => {
-  if (req.currentUser.role === "Parent/Guardian") return res.redirect("/my-babies");
+async function renderStaffDashboard(req, res, role) {
   const month = getMonthRange(req.query.month);
   const filter = monthVaccineFilter(month.start, month.end);
   const [babyCount, vaccines] = await Promise.all([
@@ -258,8 +258,13 @@ app.get("/dashboard", auth, async (req, res) => {
     scheduled: vaccines.filter(v => v.status === "Scheduled").length,
     missed: vaccines.filter(v => v.status === "Missed").length
   };
-  res.render("dashboard", { title: "Monthly monitoring", stats, vaccines, month });
-});
+  res.render(role === "Administrator" ? "admin-dashboard" : "healthcare-dashboard",
+    { title: role === "Administrator" ? "Administrator dashboard" : "Healthcare Worker dashboard", stats, vaccines, month });
+}
+app.get("/dashboard", auth, (req, res) => res.redirect(dashboardForRole(req.currentUser.role)));
+app.get("/admin/dashboard", auth, roles("Administrator"), (req, res) => renderStaffDashboard(req, res, "Administrator"));
+app.get("/healthcare/dashboard", auth, roles("Healthcare Worker"), (req, res) => renderStaffDashboard(req, res, "Healthcare Worker"));
+app.get("/parent/dashboard", auth, roles("Parent/Guardian"), (req, res) => res.redirect("/my-babies"));
 
 app.get("/babies", auth, roles("Administrator", "Healthcare Worker"), async (req, res) => {
   const q = (req.query.q || "").trim().slice(0, 80);
@@ -401,4 +406,45 @@ app.post("/settings", auth, async (req, res) => {
   await req.currentUser.save(); res.redirect("/settings?saved=1");
 });
 app.use((req, res) => res.status(404).render("404", { title: "Not found" }));
-app.listen(PORT, () => console.log(`Barangay Sugod Baby Vaccine Monitoring System listening on ${PORT}`));
+
+async function initializeAdministrator() {
+  const email = String(process.env.ADMIN_EMAIL || "").toLowerCase().trim();
+  const password = String(process.env.ADMIN_PASSWORD || "");
+  if (!email || !password) throw new Error("ADMIN_EMAIL and ADMIN_PASSWORD are required.");
+  let admin = await User.findOne({ email });
+  if (!admin) {
+    admin = await User.create({
+      name: process.env.ADMIN_NAME || "System Administrator",
+      email,
+      passwordHash: await bcrypt.hash(password, 12),
+      role: "Administrator",
+      active: true
+    });
+    console.log("Initial administrator account created.");
+    return;
+  }
+  if (admin.role !== "Administrator") {
+    throw new Error("ADMIN_EMAIL is already assigned to a non-administrator account. Use a separate email for the administrator.");
+  }
+  if (String(process.env.ADMIN_RESET_PASSWORD || "").toLowerCase() === "true") {
+    admin.passwordHash = await bcrypt.hash(password, 12);
+    admin.active = true;
+    await admin.save();
+    console.log("Administrator password reset and account activated.");
+  } else {
+    console.log("Administrator account found; password and account status were left unchanged.");
+  }
+}
+
+async function startServer() {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI);
+    console.log("Connected to MongoDB");
+    await initializeAdministrator();
+    app.listen(PORT, () => console.log(`Barangay Sugod Baby Vaccine Monitoring System listening on ${PORT}`));
+  } catch (error) {
+    console.error("Application startup error:", error.message);
+    process.exit(1);
+  }
+}
+startServer();

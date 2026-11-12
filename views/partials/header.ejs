@@ -20,14 +20,14 @@
     <% if(user.role === "Parent/Guardian"){ %>
       <a href="/my-babies">My baby's vaccines</a>
     <% } else { %>
-      <a href="/dashboard">Dashboard</a><a href="/babies">Baby records</a><a href="/reports">Monthly report</a>
+      <a href="<%= user.role === 'Administrator' ? '/admin/dashboard' : '/healthcare/dashboard' %>">Dashboard</a><a href="/babies">Baby records</a><a href="/reports">Monthly report</a>
     <% } %>
     <a href="/messages">Messages</a><a href="/settings">Settings</a>
     <% if(user.role === "Administrator"){ %><a href="/users">User accounts</a><% } %>
     <form action="/logout" method="post"><button class="nav-logout" type="submit">Log out</button></form>
   </nav>
   <% } else { %>
-    <nav class="app-nav"><a href="/login">Sign in</a><a href="/register">Parent registration</a></nav>
+    <nav class="app-nav"><a href="/login">Choose portal</a><a href="/parent/login">Parent sign in</a><a href="/register">Parent registration</a></nav>
   <% } %>
 </header>
 <main class="app-main">

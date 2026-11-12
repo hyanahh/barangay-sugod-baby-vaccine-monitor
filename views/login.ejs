@@ -1,1 +1,18 @@
-<%- include("partials/header") %><section class="card auth"><p class="tag">BARANGAY HEALTH CENTER</p><h1>Welcome back</h1><p class="muted">Sign in to your account.</p><% if(error){ %><div class="alert"><%= error %></div><% } %><form method="post" action="/login" class="stack"><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Password<input name="password" type="password" required autocomplete="current-password"></label><button class="primary">Sign in</button></form><p class="muted center">Parent/guardian? <a href="/register">Create an account</a></p></section><%- include("partials/footer") %>
+<%- include("partials/header") %>
+<section class="card auth auth-portal">
+  <p class="tag"><%= portal.label %></p>
+  <h1>Welcome back</h1>
+  <p class="muted">Sign in to your <%= portal.role === "Parent/Guardian" ? "parent" : portal.role.toLowerCase() %> account.</p>
+  <% if(error){ %><div class="alert" role="alert"><%= error %></div><% } %>
+  <form method="post" action="/login" class="stack">
+    <input type="hidden" name="portal" value="<%= portalKey %>">
+    <label>Email<input name="email" type="email" required autocomplete="username" autofocus></label>
+    <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
+    <button class="primary" type="submit">Sign in to <%= portal.role === "Parent/Guardian" ? "Parent" : portal.role %> Portal</button>
+  </form>
+  <% if(portalKey === "parent"){ %>
+    <p class="muted center">New parent/guardian? <a href="/register">Create an account</a></p>
+  <% } %>
+  <p class="muted center"><a href="/login">← Choose a different portal</a></p>
+</section>
+<%- include("partials/footer") %>
