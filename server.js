@@ -9,6 +9,7 @@ const rateLimit = require("express-rate-limit");
 const webpush = require("web-push");
 
 const app = express();
+app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3000;
 const required = ["MONGODB_URI", "SESSION_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD"];
 for (const k of required) if (!process.env[k]) { console.error(`Missing ${k} in environment`); process.exit(1); }
