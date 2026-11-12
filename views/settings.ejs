@@ -1,0 +1,25 @@
+<%- include("partials/header") %>
+<section class="card narrow">
+  <p class="tag">ACCOUNT PREFERENCES</p><h1>Contact & notification settings</h1>
+  <p class="muted">Choose how you want to receive vaccine schedule reminders and health-center updates.</p>
+  <% if(querySaved){ %><div class="alert">Your contact preferences have been saved.</div><% } %>
+  <form method="post" action="/settings" class="stack">
+    <label>Mobile number<input name="phone" value="<%= account.phone||'' %>" placeholder="09XXXXXXXXX or +639XXXXXXXXX"></label>
+    <% if(account.role === "Parent/Guardian"){ %>
+      <label class="checkline"><input type="checkbox" name="smsOptIn" <%= account.smsOptIn ? "checked" : "" %>> I consent to receive vaccine reminders and important updates by SMS.</label>
+      <p class="muted">SMS is sent through TextBee using the registered Android phone and SIM. Your mobile carrier's normal SMS charges or limits may apply. You can withdraw consent anytime.</p>
+      <button class="primary">Save SMS preferences</button>
+    <% } else { %><button class="primary">Save contact details</button><% } %>
+  </form>
+  <% if(account.role === "Parent/Guardian"){ %>
+    <hr>
+    <h2>Web Push Notifications</h2>
+    <p class="muted">Receive browser notifications on this device without using SMS. Requires internet, an HTTPS website, and permission from your browser.</p>
+    <div class="stack">
+      <button class="secondary" type="button" data-enable-push>Enable Web Push on this device</button>
+      <button class="secondary" type="button" data-disable-push hidden>Disable Web Push on this device</button>
+      <p class="muted" data-push-status aria-live="polite"></p>
+    </div>
+  <% } %>
+</section>
+<%- include("partials/footer") %>
