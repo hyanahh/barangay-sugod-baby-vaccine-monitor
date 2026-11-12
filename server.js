@@ -13,17 +13,39 @@ const PORT = process.env.PORT || 3000;
 const required = ["MONGODB_URI", "SESSION_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD"];
 for (const k of required) if (!process.env[k]) { console.error(`Missing ${k} in environment`); process.exit(1); }
 
+// Connect to MongoDB and ensure the configured administrator exists.
+// To reset an EXISTING administrator password, temporarily set
+// ADMIN_RESET_PASSWORD=true in Render, deploy once, then remove that variable.
+// This never changes a Parent/Guardian or Healthcare Worker account into an admin.
 mongoose.connect(process.env.MONGODB_URI)
   .then(async () => {
     console.log("Connected to MongoDB");
-    const email = process.env.ADMIN_EMAIL.toLowerCase();
-    if (!(await User.findOne({ email }))) {
-      await User.create({ name: process.env.ADMIN_NAME || "System Administrator", email,
-        passwordHash: await bcrypt.hash(process.env.ADMIN_PASSWORD, 12), role: "Administrator", active: true });
+    const email = String(process.env.ADMIN_EMAIL || "").toLowerCase().trim();
+    const configuredPassword = String(process.env.ADMIN_PASSWORD || "");
+    let admin = await User.findOne({ email });
+
+    if (!admin) {
+      admin = await User.create({
+        name: process.env.ADMIN_NAME || "System Administrator",
+        email,
+        passwordHash: await bcrypt.hash(configuredPassword, 12),
+        role: "Administrator",
+        active: true
+      });
       console.log("Initial administrator account created.");
+    } else if (admin.role !== "Administrator") {
+      console.error("ADMIN_EMAIL belongs to a non-administrator account. No account role or password was changed. Use a different ADMIN_EMAIL for the administrator.");
+    } else if (process.env.ADMIN_RESET_PASSWORD === "true") {
+      admin.passwordHash = await bcrypt.hash(configuredPassword, 12);
+      admin.active = true;
+      if (process.env.ADMIN_NAME) admin.name = process.env.ADMIN_NAME;
+      await admin.save();
+      console.log("Administrator password reset and account activated.");
+    } else {
+      console.log(`Administrator account found: ${email}. Existing password and account status were left unchanged.`);
     }
   })
-  .catch(e => { console.error("MongoDB connection error:", e.message); process.exit(1); });
+  .catch(e => { console.error("MongoDB connection or administrator setup error:", e.message); process.exit(1); });
 
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 100 },
